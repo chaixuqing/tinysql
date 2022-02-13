@@ -69,10 +69,33 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 	return buf
 }
 
+func DecodeKeyPrefix(key kv.Key) (tail kv.Key, tableID int64, value int64, err error) {
+	if len(key) == 0 {
+		return key, 0, 0, errors.New("key length is too short")
+	}
+	if bytes.Compare(key[:tablePrefixLength], tablePrefix) != 0 {
+		return key, 0, 0, errors.New("invalid tablePrefix")
+	}
+	if key, tableID, err = codec.DecodeInt(key[tablePrefixLength:]); err != nil {
+		return key, 0, 0, err
+	}
+	if bytes.Compare(key[:recordPrefixSepLength], recordPrefixSep) != 0 {
+		return key, 0, 0, errors.New("invalid recordPrefixSep")
+	}
+	if key, value, err = codec.DecodeInt(key[recordPrefixSepLength:]); err != nil {
+		return key, 0, 0, err
+	}
+	return key, tableID, value, err
+}
+
 // DecodeRecordKey decodes the key and gets the tableID, handle.
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	/* Your code here */
-	return
+	key, tableID, handle, err = DecodeKeyPrefix(key)
+	if len(key) != 0 {
+		return 0, 0, errors.New("key length is too long")
+	}
+	return tableID, handle, err
 }
 
 // appendTableIndexPrefix appends table index prefix  "t[tableID]_i".
@@ -95,7 +118,9 @@ func EncodeIndexSeekKey(tableID int64, idxID int64, encodedValue []byte) kv.Key 
 // DecodeIndexKeyPrefix decodes the key and gets the tableID, indexID, indexValues.
 func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues []byte, err error) {
 	/* Your code here */
-	return tableID, indexID, indexValues, nil
+	key, tableID, indexID, err = DecodeKeyPrefix(key)
+	indexValues = key
+	return tableID, indexID, indexValues, err
 }
 
 // DecodeIndexKey decodes the key and gets the tableID, indexID, indexValues.
@@ -138,7 +163,6 @@ func DecodeValuesBytesToStrings(b []byte) ([]string, error) {
 	}
 	return datumValues, nil
 }
-
 
 // EncodeRow encode row data and column ids into a slice of byte.
 // Row layout: colID1, value1, colID2, value2, .....
